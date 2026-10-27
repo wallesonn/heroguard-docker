@@ -1,15 +1,16 @@
 #Este repositorio é publico 
-#Stack do HeroGuard: aplicação (export estático servido por nginx) + Postgres
-# local. O Traefik já roda na VPS (fora desta stack) e encaminha heroguard.my
-# para o serviço app via labels na rede externa "web" — a mesma configuração
-# usada pelas demais stacks da VPS (inlaudo).
+#Stack do HeroGuard: aplicação (export estático servido por nginx), API de
+# cadastro (Node + pg) e Postgres local. O Traefik já roda na VPS (fora desta
+# stack) e encaminha heroguard.my para o serviço app via labels na rede
+# externa "web" — a mesma configuração usada pelas demais stacks da VPS
+# (inlaudo). O nginx faz proxy de /api/ para o serviço api.
 #
 # Build/publish da imagem: ./build.sh vX.Y.Z na raiz do repo do app.
 # Deploy: Portainer (web editor ou este repo via GitHub) ou CLI na VPS.
 # Sem bloco build de propósito: a imagem é sempre puxada pronta do Docker Hub.
 #
-# O Postgres fica provisionado nesta stack para o backend futuro (cadastro,
-# dashboard). A landing atual é estática e ainda não o utiliza.
+# O Postgres é usado pela API de cadastro: o formulário da landing grava na
+# tabela "waitlist" (schema criado pela própria API na inicialização).
 
 services:
   app:
@@ -19,8 +20,8 @@ services:
     expose:
       - "80"
     environment:
-      # URL de conexão usada pelo backend futuro (host "db" = serviço abaixo)
-      DATABASE_URL: postgresql://${POSTGRES_USER:-heroguard}:${POSTGRES_PASSWORD:-heroguard}@db:5432/${POSTGRES_DB:-heroguard}
+      # O runtime do site é nginx (estático): não acessa o banco. A conexão
+      # com o Postgres é feita apenas pelo serviço "api".
       NODE_ENV: production
     networks:
       - default
@@ -43,6 +44,31 @@ services:
       retries: 3
       start_period: 10s
 
+  api:
+    image: ${API_IMAGE:-wallesonnn/heroguard-api:latest}
+    container_name: heroguard-api
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-heroguard}:${POSTGRES_PASSWORD:-heroguard}@db:5432/${POSTGRES_DB:-heroguard}
+      PORT: "3000"
+      NODE_ENV: production
+    networks:
+      # Só na rede interna: o acesso público chega pelo proxy do nginx (app).
+      - default
+    labels:
+      - "traefik.enable=false"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
   db:
     image: postgres:17-alpine
     container_name: heroguard-db
@@ -52,19 +78,25 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-heroguard}
       POSTGRES_DB: ${POSTGRES_DB:-heroguard}
     # Mapeamento de porta DESABILITADO (2026-10-19): a VPS já tem outro
-    # Postgres publicado na 5432 do host. O db fica acessível apenas pela
-    # rede interna da stack (host "db", porta 5432) — suficiente para o
-    # backend futuro. Para reabilitar acesso pelo host (ferramentas locais),
-    # descomente abaixo usando uma porta livre via POSTGRES_PORT (ex.: 5433).
+    # Postgres publicado na 5432 do host. O acesso é só pelas redes Docker:
+    # "db" para os serviços da stack e "heroguard-db" para o n8n. Para
+    # acesso a partir do host (ferramentas locais), descomente abaixo usando
+    # uma porta livre via POSTGRES_PORT (ex.: 5433).
     #ports:
     #  - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
-      - default
+      default:
+      # Também na rede do Traefik: o n8n (que já roda nesta VPS na mesma
+      # rede "web") consulta a tabela waitlist pelo host "heroguard-db".
+      # Não há exposição à internet — o Postgres não tem porta publicada e
+      # a label abaixo mantém o Traefik fora do serviço.
+      web:
+        aliases:
+          - heroguard-db
     labels:
-      # Impede o Traefik (exposedByDefault) de tentar rotear o Postgres —
-      # o db não está na rede "web" e geraria erros a cada ciclo de scan.
+      # Impede o Traefik (exposedByDefault) de tentar rotear o Postgres.
       - "traefik.enable=false"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-heroguard} -d ${POSTGRES_DB:-heroguard}"]

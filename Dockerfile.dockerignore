@@ -1,0 +1,33 @@
+# Contexto do build do site (Dockerfile deste diretório).
+# Este arquivo PRECISA se chamar "Dockerfile.dockerignore" para o BuildKit
+# aplicá-lo quando o build usa "-f heroguard-docker/Dockerfile .".
+node_modules
+.next
+out
+.git
+.devin
+.gitignore
+
+# A API tem contexto e imagem próprios (build.sh: -f api/Dockerfile api)
+api
+
+# Documentação e artefatos de revisão não são necessários na imagem
+docs
+assets
+scripts
+
+# Segredos nunca entram no contexto
+.env
+.env.*
+
+# Arquivos legados da v0.1 (HTML/CSS/JS puro) não são usados pelo build Next
+index.html
+styles.css
+script.js
+
+# Logs e arquivos do sistema
+*.log
+.DS_Store
+
+# ATENÇÃO: public/videos/ NÃO está na lista — o vídeo local deve entrar na
+# imagem durante o build (feito localmente). public/ inteira é incluída.
