@@ -84,9 +84,9 @@ O Dockerfile da API é `api/Dockerfile`, com contexto `api/`.
    - `POSTGRES_PASSWORD` — senha forte (troque a padrão; **evite `@ : / # ?`**,
      que quebram o parse da `DATABASE_URL` montada no compose);
    - `DOCKER_IMAGE` — opcional, para travar a versão do site
-     (ex.: `wallesonnn/heroguard-app:v0.1.6`; padrão: `latest`);
+     (ex.: `wallesonnn/heroguard-app:v0.1.7`; padrão: `latest`);
    - `API_IMAGE` — opcional, para travar a versão da API
-     (ex.: `wallesonnn/heroguard-api:v0.1.6`; padrão: `latest`).
+     (ex.: `wallesonnn/heroguard-api:v0.1.7`; padrão: `latest`).
 4. **Deploy the stack**. Depois de alguns segundos, `https://heroguard.my`
    deve responder; o certificado é emitido pelo Traefik.
 
@@ -196,3 +196,10 @@ Problemas encontrados e resolvidos — úteis para os próximos deploys/domínio
 - **`psql` local sem senha:** dentro do container do Postgres, o socket
   local é `trust` (`local all all trust`) — consultas administrativas não
   precisam de senha; conexões TCP exigem as credenciais do env.
+- **`try_files $uri/` quebrava `/privacidade` (403):** o export do Next gera
+  `privacidade.html` **e** o diretório `privacidade/` (payloads RSC, sem
+  `index.html`). O nginx via o diretório, redirecionava para a versão com
+  barra e devolvia 403. Correção (v0.1.8):
+  `try_files $uri $uri.html /index.html;` — padrão correto para export do
+  Next com páginas não-raiz. Descoberto em 2026-10-28 ao validar o link
+  “Leia o aviso completo” do modal; existia desde o primeiro deploy.
