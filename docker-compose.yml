@@ -77,8 +77,9 @@ services:
     expose:
       - "3000"
     environment:
-      # Mesmo Postgres da stack; as tabelas da plataforma vivem no schema "app"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-heroguard}:${POSTGRES_PASSWORD:-heroguard}@db:5432/${POSTGRES_DB:-heroguard}
+      # Banco DEDICADO da plataforma (criado pelo serviço db-init abaixo).
+      # Isolado do banco da landing: migrações do Prisma não alcançam a waitlist.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-heroguard}:${POSTGRES_PASSWORD:-heroguard}@db:5432/${PLATFORM_DB:-heroguard_app}
       # Autenticação (Supabase). Também entram como build args no build.sh,
       # porque NEXT_PUBLIC_* é embutido no bundle durante o build.
       NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL:-}
@@ -101,12 +102,40 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      # só sobe depois que o banco dedicado existir
+      db-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 25s
+
+  # Cria o banco da plataforma se ainda não existir. Roda uma vez por deploy,
+  # é idempotente e não sobe servidor — apenas um psql de criação.
+  db-init:
+    image: postgres:17-alpine
+    container_name: heroguard-db-init
+    restart: "no"
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-heroguard}
+    command:
+      - sh
+      - -c
+      - >-
+        psql -h db -U ${POSTGRES_USER:-heroguard} -d postgres -tAc
+        "SELECT 1 FROM pg_database WHERE datname='${PLATFORM_DB:-heroguard_app}'"
+        | grep -q 1
+        || psql -h db -U ${POSTGRES_USER:-heroguard} -d postgres -c
+        "CREATE DATABASE ${PLATFORM_DB:-heroguard_app} OWNER ${POSTGRES_USER:-heroguard}"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - default
+    labels:
+      - "traefik.enable=false"
 
   db:
     image: postgres:17-alpine
