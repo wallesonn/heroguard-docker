@@ -80,10 +80,9 @@ services:
       # Banco DEDICADO da plataforma (criado pelo serviço db-init abaixo).
       # Isolado do banco da landing: migrações do Prisma não alcançam a waitlist.
       DATABASE_URL: postgresql://${POSTGRES_USER:-heroguard}:${POSTGRES_PASSWORD:-heroguard}@db:5432/${PLATFORM_DB:-heroguard_app}
-      # Autenticação (Supabase). Também entram como build args no build.sh,
-      # porque NEXT_PUBLIC_* é embutido no bundle durante o build.
-      NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL:-}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      # Autenticação (Supabase), lida em runtime pela aplicação.
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
       NODE_ENV: production
     networks:
       # default: acesso ao Postgres. web: alcance pelo Traefik.
