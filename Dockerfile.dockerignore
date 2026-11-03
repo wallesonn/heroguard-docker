@@ -8,8 +8,10 @@ out
 .devin
 .gitignore
 
-# A API tem contexto e imagem próprios (build.sh: -f api/Dockerfile api)
+# API e plataforma têm contexto e imagens próprios
+# (build.sh: -f api/Dockerfile api · -f platform/Dockerfile platform)
 api
+platform
 
 # Documentação e artefatos de revisão não são necessários na imagem
 docs

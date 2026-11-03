@@ -1,9 +1,10 @@
 #Este repositorio é publico 
-#Stack do HeroGuard: aplicação (export estático servido por nginx), API de
-# cadastro (Node + pg) e Postgres local. O Traefik já roda na VPS (fora desta
-# stack) e encaminha heroguard.my para o serviço app via labels na rede
-# externa "web" — a mesma configuração usada pelas demais stacks da VPS
-# (inlaudo). O nginx faz proxy de /api/ para o serviço api.
+#Stack do HeroGuard: site (export estático servido por nginx), API de cadastro
+# (Node + pg), PLATAFORMA (Next dinâmico + Prisma) e Postgres local. O Traefik
+# já roda na VPS (fora desta stack) e encaminha heroguard.my para o serviço app
+# e app.heroguard.my para o serviço platform, via labels na rede externa "web"
+# — a mesma configuração usada pelas demais stacks da VPS (inlaudo).
+# O nginx faz proxy de /api/ para o serviço api.
 #
 # Build/publish da imagem: ./build.sh vX.Y.Z na raiz do repo do app.
 # Deploy: Portainer (web editor ou este repo via GitHub) ou CLI na VPS.
@@ -68,6 +69,44 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+  platform:
+    image: ${PLATFORM_IMAGE:-wallesonnn/heroguard-platform:latest}
+    container_name: heroguard-platform
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      # Mesmo Postgres da stack; as tabelas da plataforma vivem no schema "app"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-heroguard}:${POSTGRES_PASSWORD:-heroguard}@db:5432/${POSTGRES_DB:-heroguard}
+      # Autenticação (Supabase). Também entram como build args no build.sh,
+      # porque NEXT_PUBLIC_* é embutido no bundle durante o build.
+      NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL:-}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      NODE_ENV: production
+    networks:
+      # default: acesso ao Postgres. web: alcance pelo Traefik.
+      - default
+      - web
+    labels:
+      - "app=heroguard"
+      - "service=heroguard-platform"
+      - "traefik.enable=true"
+      - "traefik.docker.network=web"
+      - "traefik.http.routers.heroguard-platform.rule=Host(`app.heroguard.my`)"
+      - "traefik.http.routers.heroguard-platform.entrypoints=websecure"
+      - "traefik.http.routers.heroguard-platform.tls=true"
+      - "traefik.http.routers.heroguard-platform.tls.certresolver=lets-encrypt"
+      - "traefik.http.services.heroguard-platform.loadbalancer.server.port=3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
 
   db:
     image: postgres:17-alpine
