@@ -15,8 +15,8 @@
 
 services:
   app:
-    image: ${DOCKER_IMAGE:-wallesonnn/heroguard-app:latest}
-    container_name: heroguard-app
+    image: ${LANDING_IMAGE:-wallesonnn/heroguard-landing:latest}
+    container_name: heroguard-landing
     restart: unless-stopped
     expose:
       - "80"
@@ -30,7 +30,7 @@ services:
     labels:
       - "app=heroguard"
       - "domain=heroguard.my"
-      - "service=heroguard-app"
+      - "service=heroguard-landing"
       - "traefik.enable=true"
       - "traefik.docker.network=web"
       - "traefik.http.routers.heroguard.rule=Host(`heroguard.my`) || Host(`www.heroguard.my`)"
