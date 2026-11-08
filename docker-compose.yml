@@ -1,9 +1,9 @@
 #Este repositorio é publico 
-#Stack do HeroGuard: site (export estático servido por nginx), API de cadastro
-# (Node + pg), PLATAFORMA (Next dinâmico + Prisma) e Postgres local. O Traefik
-# já roda na VPS (fora desta stack) e encaminha heroguard.my para o serviço app
-# e app.heroguard.my para o serviço platform, via labels na rede externa "web"
-# — a mesma configuração usada pelas demais stacks da VPS (inlaudo).
+#Stack do HeroGuard: landing (export estático servido por nginx), API de cadastro
+# (Node + pg), APP (Next dinâmico + Prisma) e Postgres local. O Traefik
+# já roda na VPS (fora desta stack) e encaminha heroguard.my para o serviço
+# landing e app.heroguard.my para o serviço app, via labels na rede externa
+# "web" — a mesma configuração usada pelas demais stacks da VPS (inlaudo).
 # O nginx faz proxy de /api/ para o serviço api.
 #
 # Build/publish da imagem: ./build.sh vX.Y.Z na raiz do repo do app.
@@ -14,7 +14,7 @@
 # tabela "waitlist" (schema criado pela própria API na inicialização).
 
 services:
-  app:
+  landing:
     image: ${LANDING_IMAGE:-wallesonnn/heroguard-landing:latest}
     container_name: heroguard-landing
     restart: unless-stopped
@@ -70,16 +70,16 @@ services:
       retries: 3
       start_period: 20s
 
-  platform:
-    image: ${PLATFORM_IMAGE:-wallesonnn/heroguard-platform:latest}
-    container_name: heroguard-platform
+  app:
+    image: ${APP_IMAGE:-wallesonnn/heroguard-app:latest}
+    container_name: heroguard-app
     restart: unless-stopped
     expose:
       - "3000"
     environment:
-      # Banco DEDICADO da plataforma (criado pelo serviço db-init abaixo).
+      # Banco DEDICADO do app (criado pelo serviço db-init abaixo).
       # Isolado do banco da landing: migrações do Prisma não alcançam a waitlist.
-      DATABASE_URL: postgresql://${POSTGRES_USER:-heroguard}:${POSTGRES_PASSWORD:-heroguard}@db:5432/${PLATFORM_DB:-heroguard_app}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-heroguard}:${POSTGRES_PASSWORD:-heroguard}@db:5432/${APP_DB:-heroguard_app}
       # Autenticação (Supabase), lida em runtime pela aplicação.
       SUPABASE_URL: ${SUPABASE_URL:-}
       SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
@@ -90,14 +90,14 @@ services:
       - web
     labels:
       - "app=heroguard"
-      - "service=heroguard-platform"
+      - "service=heroguard-app"
       - "traefik.enable=true"
       - "traefik.docker.network=web"
-      - "traefik.http.routers.heroguard-platform.rule=Host(`app.heroguard.my`)"
-      - "traefik.http.routers.heroguard-platform.entrypoints=websecure"
-      - "traefik.http.routers.heroguard-platform.tls=true"
-      - "traefik.http.routers.heroguard-platform.tls.certresolver=lets-encrypt"
-      - "traefik.http.services.heroguard-platform.loadbalancer.server.port=3000"
+      - "traefik.http.routers.heroguard-app.rule=Host(`app.heroguard.my`)"
+      - "traefik.http.routers.heroguard-app.entrypoints=websecure"
+      - "traefik.http.routers.heroguard-app.tls=true"
+      - "traefik.http.routers.heroguard-app.tls.certresolver=lets-encrypt"
+      - "traefik.http.services.heroguard-app.loadbalancer.server.port=3000"
     depends_on:
       db:
         condition: service_healthy
@@ -111,7 +111,7 @@ services:
       retries: 3
       start_period: 25s
 
-  # Cria o banco da plataforma se ainda não existir. Roda uma vez por deploy,
+  # Cria o banco do app se ainda não existir. Roda uma vez por deploy,
   # é idempotente e não sobe servidor — apenas um psql de criação.
   db-init:
     image: postgres:17-alpine
@@ -124,10 +124,10 @@ services:
       - -c
       - >-
         psql -h db -U ${POSTGRES_USER:-heroguard} -d postgres -tAc
-        "SELECT 1 FROM pg_database WHERE datname='${PLATFORM_DB:-heroguard_app}'"
+        "SELECT 1 FROM pg_database WHERE datname='${APP_DB:-heroguard_app}'"
         | grep -q 1
         || psql -h db -U ${POSTGRES_USER:-heroguard} -d postgres -c
-        "CREATE DATABASE ${PLATFORM_DB:-heroguard_app} OWNER ${POSTGRES_USER:-heroguard}"
+        "CREATE DATABASE ${APP_DB:-heroguard_app} OWNER ${POSTGRES_USER:-heroguard}"
     depends_on:
       db:
         condition: service_healthy

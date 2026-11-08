@@ -8,10 +8,10 @@ out
 .devin
 .gitignore
 
-# API e plataforma têm contexto e imagens próprios
-# (build.sh: -f api/Dockerfile api · -f platform/Dockerfile platform)
+# API e app têm contexto e imagens próprios
+# (build.sh: -f api/Dockerfile api · -f heroguard-app/Dockerfile heroguard-app)
 api
-platform
+heroguard-app
 
 # Documentação e artefatos de revisão não são necessários na imagem
 docs

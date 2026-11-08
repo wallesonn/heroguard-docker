@@ -1,7 +1,7 @@
 # HeroGuard — Stack Docker
 
 Stack da aplicação HeroGuard em Docker: site estático (nginx) + **API de
-cadastro** (Node + pg) + **plataforma** (Next dinâmico + Prisma) +
+cadastro** (Node + pg) + **app** (Next dinâmico + Prisma) +
 **PostgreSQL** local, com integração com o **Traefik** já existente na VPS,
 atendendo **heroguard.my**, **www.heroguard.my** e **app.heroguard.my**
 (mesma infraestrutura das outras stacks da VPS, como o inlaudo).
@@ -22,15 +22,15 @@ do Traefik `heroguard` e banco `heroguard`.
 
 | Serviço | Container | Papel |
 |---|---|---|
-| `app` | `heroguard-landing` | nginx servindo o site estático; faz proxy de `/api/` para `api:3000` |
+| `landing` | `heroguard-landing` | nginx servindo o site estático; faz proxy de `/api/` para `api:3000` |
 | `api` | `heroguard-api` | Node + pg; recebe `POST /api/waitlist` e grava na tabela `waitlist`; cria o schema na inicialização |
-| `platform` | `heroguard-platform` | Next dinâmico (`next start`) + Prisma; roda `prisma migrate deploy` no start; serve `app.heroguard.my` |
+| `app` | `heroguard-app` | Next dinâmico (`next start`) + Prisma; roda `prisma migrate deploy` no start; serve `app.heroguard.my` |
 | `db-init` | `heroguard-db-init` | **one-shot**: cria o database `heroguard_app` se não existir; termina com `Exited (0)` |
 | `db` | `heroguard-db` | Postgres 17 (volume `pgdata`); sem porta no host |
 
 Dois databases no mesmo Postgres: **`heroguard`** (tabela `waitlist`, da
-landing) e **`heroguard_app`** (dados de produto, da plataforma). O segundo é
-criado pelo `db-init`, e a `platform` só sobe depois dele
+landing) e **`heroguard_app`** (dados de produto, do app). O segundo é
+criado pelo `db-init`, e o `app` só sobe depois dele
 (`depends_on: service_completed_successfully`).
 
 A `api` só fica na rede interna (`default`): o único ponto público é o nginx.
@@ -43,7 +43,7 @@ n8n (mesma VPS, mesma rede) consulte a tabela `waitlist` sem porta exposta.
 heroguard-docker/
 ├── Dockerfile               # build do site (Next.js → nginx servindo out/)
 ├── Dockerfile.dockerignore  # exclusões do contexto DESTE Dockerfile (o nome importa!)
-├── docker-compose.yml       # serviços app + api + db + labels do Traefik
+├── docker-compose.yml       # serviços landing + api + app + db + labels do Traefik
 ├── nginx.conf               # estático + proxy /api/ (com resolver do Docker)
 ├── .env.example             # configuração local (referência; o real não sobe)
 └── README.md                # este arquivo
@@ -53,10 +53,10 @@ heroguard-docker/
 > `docker-compose.yml`. Os demais arquivos são locais (necessários ao build)
 > e ficam fora do versionamento, ignorados pelo `.gitignore` da pasta.
 
-O código da API e da plataforma fica no **repo do app**: `heroguard/api/`
-e `heroguard/platform/`, junto do `build.sh`, que constrói e publica as
+O código da API e do app fica no **repo do app**: `heroguard/api/`
+e `heroguard/heroguard-app/`, junto do `build.sh`, que constrói e publica as
 três imagens no Docker Hub. Os Dockerfiles são `api/Dockerfile` (contexto
-`api/`) e `platform/Dockerfile` (contexto `platform/`).
+`api/`) e `heroguard-app/Dockerfile` (contexto `heroguard-app/`).
 
 ## Pré-requisitos
 
@@ -96,11 +96,11 @@ três imagens no Docker Hub. Os Dockerfiles são `api/Dockerfile` (contexto
      (ex.: `wallesonnn/heroguard-landing:v0.1.10`; padrão: `latest`);
    - `API_IMAGE` — opcional, versão da API
      (ex.: `wallesonnn/heroguard-api:v0.1.10`; padrão: `latest`);
-   - `PLATFORM_IMAGE` — opcional, versão da plataforma
-     (ex.: `wallesonnn/heroguard-platform:v0.1.10`; padrão: `latest`);
-   - `SUPABASE_URL` e `SUPABASE_ANON_KEY` — autenticação da plataforma,
+   - `APP_IMAGE` — opcional, versão do app
+     (ex.: `wallesonnn/heroguard-app:v0.1.11`; padrão: `latest`);
+   - `SUPABASE_URL` e `SUPABASE_ANON_KEY` — autenticação do app,
      lidas em **runtime** (trocar não exige rebuild);
-   - `PLATFORM_DB` — opcional, nome do database da plataforma
+   - `APP_DB` — opcional, nome do database do app
      (padrão: `heroguard_app`; **não** use o mesmo valor de `POSTGRES_DB`).
 4. **Deploy the stack**. Depois de alguns segundos, `https://heroguard.my`
    deve responder; o certificado é emitido pelo Traefik.
@@ -125,11 +125,11 @@ docker compose ps
 
 ```bash
 # na sua máquina (o vídeo de public/videos/ entra na imagem do site)
-./build.sh vX.Y.Z         # publica heroguard-landing, heroguard-api e heroguard-platform
+./build.sh vX.Y.Z         # publica heroguard-landing, heroguard-api e heroguard-app
 ```
 
 Depois, no Portainer: **Pull and redeploy** na stack (seguindo `latest`) ou
-troque `LANDING_IMAGE`/`API_IMAGE` para a versão exata e faça
+troque `LANDING_IMAGE`/`API_IMAGE`/`APP_IMAGE` para a versão exata e faça
 **Update the stack**.
 
 ## Banco de dados (Postgres)
@@ -138,7 +138,7 @@ troque `LANDING_IMAGE`/`API_IMAGE` para a versão exata e faça
   (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`).
 - A tabela **`waitlist`** é criada pela própria API na inicialização
   (idempotente; não há passo manual de migração).
-- O database **`heroguard_app`** (plataforma) é criado pelo serviço one-shot
+- O database **`heroguard_app`** (app) é criado pelo serviço one-shot
   `db-init`; as tabelas dele nascem das migrações do Prisma, aplicadas no
   `CMD` da imagem (`prisma migrate deploy`).
 - Dados persistidos no volume `pgdata` (sobrevive a `down`/`up`; apague apenas
@@ -215,20 +215,20 @@ Problemas encontrados e resolvidos — úteis para os próximos deploys/domínio
   local é `trust` (`local all all trust`) — consultas administrativas não
   precisam de senha; conexões TCP exigem as credenciais do env.
 
-## Lições da plataforma (2026-11-02/03)
+## Lições do app (2026-11-02/03)
 
 - **P3005 ao compartilhar o banco da landing:** com o Prisma apontando para o
   database `heroguard`, o `migrate deploy` falha com
   *“The database schema is not empty”* (P3005), porque o `public.waitlist` já
   existe. A correção foi dar um **database dedicado** (`heroguard_app`): banco
-  vazio → migração aplica sempre, e `migrate reset` da plataforma nunca toca
+  vazio → migração aplica sempre, e `migrate reset` do app nunca toca
   nos leads. Baseline (`migrate resolve --applied`) resolve caso a caso, mas
-  não elimina a corrida entre `api` e `platform` num volume novo.
-- **Ordem de subida importa:** `platform` depende de `db` healthy **e** de
+  não elimina a corrida entre `api` e `app` num volume novo.
+- **Ordem de subida importa:** `app` depende de `db` healthy **e** de
   `db-init` concluído (`service_completed_successfully`). Sem isso, o resultado
   do deploy “do zero” fica dependente de quem cria objeto primeiro.
 - **Config em runtime, não no build:** `NEXT_PUBLIC_*` é embutido no bundle;
-  a plataforma passou a ler `SUPABASE_URL`/`SUPABASE_ANON_KEY` em runtime
+  o app passou a ler `SUPABASE_URL`/`SUPABASE_ANON_KEY` em runtime
   (servidor lê e entrega ao browser por props). Efeito: a mesma imagem serve
   produção e teste com projetos Supabase diferentes.
 - **ACME com `Unable to validate JWS`:** o Traefik passa a servir o
