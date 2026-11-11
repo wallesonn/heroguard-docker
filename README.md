@@ -243,3 +243,15 @@ Problemas encontrados e resolvidos — úteis para os próximos deploys/domínio
   `try_files $uri $uri.html /index.html;` — padrão correto para export do
   Next com páginas não-raiz. Descoberto em 2026-10-28 ao validar o link
   “Leia o aviso completo” do modal; existia desde o primeiro deploy.
+- **`lookup registry-1.docker.io: no such host` no build:** falha de DNS
+  **dentro da VM do Docker Desktop**, não no projeto. No host o domínio
+  resolvia e `docker pull` funcionava normalmente. O primeiro acesso à rede do
+  build é o `# syntax=docker/dockerfile:1`, então é o erro que aparece
+  primeiro. Costuma ser intermitente (VPN/Tailscale com várias interfaces
+  `utun`) e o build seguinte passa. Se persistir: reiniciar o Docker Desktop,
+  fixar DNS (`8.8.8.8`/`1.1.1.1`) em *Settings → Resources → Network*, ou
+  recriar o builder (`docker buildx rm desktop-linux`).
+- **Vídeo grande no contexto de build:** o vídeo em `public/videos/` entra na
+  imagem do site. O master original (45 MB) foi substituído por
+  `hero-1080p.mp4` (8,2 MB) e `hero-720p.mp4` (3,4 MB); manter o master fora
+  da pasta evita mandar 45 MB a mais em cada build.
